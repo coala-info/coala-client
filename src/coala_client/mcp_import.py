@@ -1,6 +1,7 @@
 """Import CWL toolsets and register them as MCP servers."""
 
 import json
+import re
 import shutil
 import tempfile
 import zipfile
@@ -8,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
+
+import yaml
 
 from ._repo import (
     COALA_REPO,
@@ -58,6 +61,58 @@ def _mcps_dir_from_config(mcp_config_file: str) -> Path:
     return mcps_dir
 
 
+# WorkflowHub-style report line: **Main workflow (WorkflowHub):** `path/to/workflow.cwl` (Main Workflow)
+_MAIN_WORKFLOW_REPORT_RE = re.compile(
+    r"\*\*Main workflow \(WorkflowHub\):\*\*\s*`([^`]+)`",
+    re.MULTILINE,
+)
+
+
+def _main_workflow_cwl_from_report(toolset_dir: Path) -> Path:
+    """Resolve the single main workflow .cwl path declared in report.md (cwl-* toolsets)."""
+    report_md = toolset_dir / "report.md"
+    if not report_md.is_file():
+        raise ValueError(
+            f"cwl-* toolsets require report.md in {toolset_dir} to locate the main workflow CWL."
+        )
+    text = report_md.read_text(encoding="utf-8", errors="replace")
+    m = _MAIN_WORKFLOW_REPORT_RE.search(text)
+    if not m:
+        raise ValueError(
+            f"Could not find **Main workflow (WorkflowHub):** `...` entry in {report_md}"
+        )
+    rel = m.group(1).strip()
+    base = toolset_dir.resolve()
+    candidate = (toolset_dir / rel).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as e:
+        raise ValueError(
+            f"Main workflow path must stay inside the toolset directory; got {rel!r}"
+        ) from e
+    if not candidate.is_file():
+        raise ValueError(f"Main workflow CWL not found: {candidate}")
+    if candidate.suffix.lower() != ".cwl":
+        raise ValueError(f"Main workflow path must be a .cwl file: {candidate}")
+    return candidate
+
+
+def _collect_cwl_paths_after_import(toolset_dir: Path, toolset: str) -> list[Path]:
+    """List .cwl files to register. cwl-* toolsets: only the main workflow from report.md."""
+    if toolset.startswith("cwl-"):
+        return [_main_workflow_cwl_from_report(toolset_dir)]
+    _strip_non_cwl_artifacts(toolset_dir)
+    cwl_paths = sorted(
+        p for p in toolset_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() == ".cwl"
+    )
+    if not cwl_paths:
+        raise ValueError(
+            f"No .cwl files under {toolset_dir}."
+        )
+    return cwl_paths
+
+
 def _strip_non_cwl_artifacts(toolset_dir: Path) -> None:
     """Remove report.md and skills/ from toolset dir so only CWL and run_mcp.py remain."""
     report_md = toolset_dir / "report.md"
@@ -78,19 +133,12 @@ def _download_coala_repo_folder_to(toolset: str, toolset_dir: Path) -> list[Path
             f"Folder '{folder_path}' not found in {COALA_REPO}. "
             f"Check the toolset name (e.g. 'bwa') at {COALA_REPO}/tree/{COALA_REPO_BRANCH}/{COALA_REPO_DATA_PREFIX}."
         ) from e
+    cwl_paths = _collect_cwl_paths_after_import(toolset_dir, toolset)
     _strip_non_cwl_artifacts(toolset_dir)
-    cwl_paths = sorted(
-        p for p in toolset_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() == ".cwl"
-    )
-    if not cwl_paths:
-        raise ValueError(
-            f"No .cwl files in {folder_path} in {COALA_REPO}."
-        )
     return cwl_paths
 
 
-def _copy_cwl_sources(sources: list[Path], dest_dir: Path) -> list[Path]:
+def _copy_cwl_sources(sources: list[Path], dest_dir: Path, toolset: str) -> list[Path]:
     """Copy CWL files into dest_dir. Returns paths to copied .cwl files in dest_dir."""
     dest_dir.mkdir(parents=True, exist_ok=True)
     for src in sources:
@@ -104,23 +152,45 @@ def _copy_cwl_sources(sources: list[Path], dest_dir: Path) -> list[Path]:
             if src.suffix.lower() != ".cwl":
                 raise ValueError(f"Not a CWL file: {src}")
             shutil.copy2(src, dest_dir / src.name)
+    cwl_paths = _collect_cwl_paths_after_import(dest_dir, toolset)
     _strip_non_cwl_artifacts(dest_dir)
-    # Include .cwl files in any subdirectory (e.g. from zip with nested dirs)
-    cwl_paths = sorted(
-        p for p in dest_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() == ".cwl"
-    )
     return cwl_paths
+
+
+def _cwl_declares_stdout(cwl_path: Path) -> bool:
+    """True if the CWL defines a stdout redirect (root or ``$graph`` entry)."""
+    try:
+        raw = cwl_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    try:
+        for doc in yaml.safe_load_all(raw):
+            if doc is None or not isinstance(doc, dict):
+                continue
+            if doc.get("stdout") is not None:
+                return True
+            graph = doc.get("$graph")
+            if isinstance(graph, list):
+                for node in graph:
+                    if isinstance(node, dict) and node.get("stdout") is not None:
+                        return True
+    except yaml.YAMLError:
+        return False
+    return False
 
 
 def _generate_mcp_py(toolset_dir: Path, cwl_paths: list[Path]) -> str:
     """Generate run_mcp.py script content that loads all CWL tools and serves via stdio."""
     # Use paths relative to toolset_dir so nested dirs (e.g. from zip) work
-    rel_paths = [p.relative_to(toolset_dir).as_posix() for p in sorted(cwl_paths)]
-    add_lines = "\n".join(
-        f'mcp.add_tool(os.path.join(base_dir, {repr(rel)}))'
-        for rel in rel_paths
-    )
+    add_lines = []
+    for p in sorted(cwl_paths):
+        rel = p.relative_to(toolset_dir).as_posix()
+        path_arg = f"os.path.join(base_dir, {repr(rel)})"
+        if _cwl_declares_stdout(p):
+            add_lines.append(f"mcp.add_tool({path_arg}, read_outs=True)")
+        else:
+            add_lines.append(f"mcp.add_tool({path_arg})")
+    add_lines = "\n".join(add_lines)
     return f'''from coala.mcp_api import mcp_api
 import os
 
@@ -153,6 +223,10 @@ def import_cwl_toolset(
 
     Sources can be local paths or http(s) URLs to .cwl files or a .zip archive.
 
+    If ``toolset`` starts with ``cwl-``, the archive or directory must include ``report.md``
+    with a WorkflowHub ``Main workflow (WorkflowHub)`` bullet; only that main ``.cwl`` file
+    is registered in ``run_mcp.py``.
+
     - Copies or unzips sources into ~/.config/coala/<toolset>/
     - Creates run_mcp.py there (uses coala.mcp_api)
     - Adds or updates the toolset entry in mcp_servers.json
@@ -172,7 +246,7 @@ def import_cwl_toolset(
             # Remove existing content so unzip replaces cleanly
             if toolset_dir.exists():
                 shutil.rmtree(toolset_dir)
-            cwl_paths = _copy_cwl_sources(resolved, toolset_dir)
+            cwl_paths = _copy_cwl_sources(resolved, toolset_dir, toolset)
         else:
             # Ensure only .cwl files; replace existing .cwl in toolset dir
             for s in resolved:
@@ -181,7 +255,7 @@ def import_cwl_toolset(
             if toolset_dir.exists():
                 for f in toolset_dir.glob("*.cwl"):
                     f.unlink()
-            cwl_paths = _copy_cwl_sources(resolved, toolset_dir)
+            cwl_paths = _copy_cwl_sources(resolved, toolset_dir, toolset)
     finally:
         if temp_dir is not None:
             temp_dir.cleanup()
@@ -229,6 +303,11 @@ def import_cwl_toolset_from_coala_repo(
     """Import CWL files from coala-repo GitHub (data/<toolset>) and register as MCP server.
 
     Downloads from https://github.com/coala-info/coala-repo tree main, folder data/<toolset>.
+
+    Toolsets whose name starts with ``cwl-`` are WorkflowHub workflow bundles: only the
+    main workflow path from ``report.md`` (the ``Main workflow (WorkflowHub)`` bullet with a
+    backtick-enclosed path) is registered as an MCP tool; other ``.cwl`` files in the folder
+    are not added.
     """
     mcps_dir = _mcps_dir_from_config(mcp_config_file)
     toolset_dir = mcps_dir / toolset

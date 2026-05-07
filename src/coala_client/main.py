@@ -204,7 +204,6 @@ def ask(prompt: str, provider: str | None, model: str | None, no_mcp: bool, sand
     asyncio.run(run_single_prompt(prompt, provider, model, no_mcp, sandbox))
 
 
-MCP_CONFIG_DEFAULT = "~/.config/coala/mcps/mcp_servers.json"
 MCP_CONFIG_GLOBAL = "~/.agents/mcps/mcp_servers.json"
 
 
@@ -222,18 +221,12 @@ def _mcp_config_local() -> str:
     required=False,
 )
 @click.option(
-    "--local",
-    "local_",
-    is_flag=True,
-    help="Install to current directory .agents/mcps/ (project-local).",
-)
-@click.option(
     "--global",
     "global_",
     is_flag=True,
-    help="Install to ~/.agents/mcps/.",
+    help="Install to ~/.agents/mcps/ instead of current directory .agents/mcps/.",
 )
-def mcp_import(toolset: str, sources: tuple[str, ...], local_: bool, global_: bool) -> None:
+def mcp_import(toolset: str, sources: tuple[str, ...], global_: bool) -> None:
     """Import CWL as an MCP server from coala-repo or from SOURCES.
 
     With no SOURCES: imports from coala-repo GitHub (data/TOOLSET), e.g. `coala mcp bwa`.
@@ -242,20 +235,16 @@ def mcp_import(toolset: str, sources: tuple[str, ...], local_: bool, global_: bo
     With SOURCES: copies or unzips SOURCES into the MCP toolset dir, creates run_mcp.py,
     and adds the server to the MCP config.
 
-    Use --local to install to .agents/mcps/ in the current directory, or --global for ~/.agents/mcps/.
-    Default (no flag) uses ~/.config/coala/mcps/.
+    Default (no flag) installs to .agents/mcps/ in the current directory.
+    Use --global to install to ~/.agents/mcps/ instead.
 
     SOURCES: local paths or http(s) URLs to .cwl files or a .zip containing .cwl.
     """
-    if local_ and global_:
-        click.echo("Cannot use both --local and --global.", err=True)
-        raise SystemExit(1)
-    if local_:
-        mcp_config_file = _mcp_config_local()
-    elif global_:
+    if global_:
         mcp_config_file = MCP_CONFIG_GLOBAL
     else:
-        mcp_config_file = load_config().mcp_config_file
+        # Default: project-local .agents/mcps/
+        mcp_config_file = _mcp_config_local()
     Path(mcp_config_file).expanduser().parent.mkdir(parents=True, exist_ok=True)
     try:
         if not sources:
@@ -291,21 +280,15 @@ def mcp_import(toolset: str, sources: tuple[str, ...], local_: bool, global_: bo
     required=False,
 )
 @click.option(
-    "--local",
-    "local_",
-    is_flag=True,
-    help="Install to current directory .agents/mcps/ (project-local).",
-)
-@click.option(
     "--global",
     "global_",
     is_flag=True,
-    help="Install to ~/.agents/mcps/.",
+    help="Install to ~/.agents/mcps/ instead of current directory .agents/mcps/.",
 )
-def mcp(toolset: str, sources: tuple[str, ...], local_: bool, global_: bool) -> None:
+def mcp(toolset: str, sources: tuple[str, ...], global_: bool) -> None:
     """Alias for mcp-import. Import from coala-repo (e.g. coala mcp bwa) or from SOURCES."""
     ctx = click.get_current_context()
-    ctx.invoke(mcp_import, toolset=toolset, sources=sources, local_=local_, global_=global_)
+    ctx.invoke(mcp_import, toolset=toolset, sources=sources, global_=global_)
 
 
 @cli.command(name="mcp-list")
@@ -358,18 +341,12 @@ def _is_toolset_from_coala_repo(sources: tuple[str, ...]) -> str | None:
     required=False,
 )
 @click.option(
-    "--local",
-    "local_",
-    is_flag=True,
-    help="Install to current directory .agents/skills/ (project-local).",
-)
-@click.option(
     "--global",
     "global_",
     is_flag=True,
-    help="Install to ~/.agents/skills/.",
+    help="Install to ~/.agents/skills/ instead of current directory .agents/skills/.",
 )
-def skill(sources: tuple[str, ...], local_: bool, global_: bool) -> None:
+def skill(sources: tuple[str, ...], global_: bool) -> None:
     """Import skills from coala-repo or from SOURCES.
 
     With a single toolset name (e.g. bwa): imports from coala-repo data/TOOLSET/skills,
@@ -377,21 +354,17 @@ def skill(sources: tuple[str, ...], local_: bool, global_: bool) -> None:
 
     With SOURCES: GitHub tree URL, zip URL, or local zip/directory path.
 
-    Use --local to install to .agents/skills/ in the current directory, or --global for ~/.agents/skills/.
-    Default (no flag) uses ~/.config/coala/skills/.
+    Default (no flag) installs to .agents/skills/ in the current directory.
+    Use --global to install to ~/.agents/skills/ instead.
     """
     if not sources:
         click.echo("Usage: coala skill <toolset>  or  coala skill <SOURCES...>", err=True)
         raise SystemExit(1)
-    if local_ and global_:
-        click.echo("Cannot use both --local and --global.", err=True)
-        raise SystemExit(1)
-    if local_:
-        skills_dir = get_local_skills_dir()
-    elif global_:
+    if global_:
         skills_dir = GLOBAL_SKILLS_DIR
     else:
-        skills_dir = None
+        # Default: project-local .agents/skills/
+        skills_dir = get_local_skills_dir()
     try:
         toolset = _is_toolset_from_coala_repo(sources)
         if toolset is not None:

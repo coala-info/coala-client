@@ -1,21 +1,32 @@
 ---
 name: coala-client
-description: How to use the coala-client CLI for chat with LLMs, MCP servers, and skills. Use when the user asks how to use coala, run coala chat, add MCP servers, import CWL toolsets, list or call MCP tools, or import or load skills.
+description: How to use the coala-client CLI for chat with LLMs, MCP servers, and skills. Use when the user asks how to use coala, run coala chat, add MCP servers, import CWL toolsets, list or call MCP tools, import or load skills, or configure project-local vs global agents paths.
 homepage: https://github.com/coala-info/coala_client
 metadata: {"clawdbot":{"emoji":"🧬","requires":{"bins":["coala-client"]},"install":[{"id":"uv","kind":"uv","package":"coala-client","bins":["coala-client"],"label":"Install coala-client (uv)"}]}}
 ---
 
 # Coala Client
 
-Part of the coala ecosystem. CLI for chat with OpenAI-compatible LLMs (OpenAI, Gemini, Ollama) and MCP (Model Context Protocol) servers. Supports importing CWL toolsets as MCP servers, importing skills.
+Part of the coala ecosystem. CLI for chat with OpenAI-compatible LLMs (OpenAI, Gemini, Ollama) and MCP (Model Context Protocol) servers. Supports importing CWL toolsets as MCP servers and importing skills.
 
 ## Config paths
 
-- MCP config and toolsets: `~/.config/coala/mcps/`  
-  - `mcp_servers.json` — server definitions  
-  - `<toolset>/` — per-toolset dirs with `run_mcp.py` and CWL files  
-- Skills: `~/.config/coala/skills/` (one subfolder per imported source)  
-- Env: `~/.config/coala/env` (optional; key=value for providers and MCP env)
+**Chat / ask** read MCP servers from the path in `MCP_CONFIG_FILE` (env), defaulting to `~/.config/coala/mcps/mcp_servers.json`. They load optional shared env from `~/.config/coala/env` (or `ENV_FILE`).
+
+**`coala mcp` / `coala mcp-import`** (imports) by default write to the **current project**:
+
+- `<cwd>/.agents/mcps/mcp_servers.json` — server definitions merged on each import  
+- `<cwd>/.agents/mcps/<toolset>/` — per-toolset dirs with `run_mcp.py` and CWL files  
+
+Use **`--global`** to install under **`~/.agents/mcps/`** instead (same layout under the home path).
+
+**`coala skill`** (imports) by default writes to **`<cwd>/.agents/skills/`** (one subfolder per source). Use **`--global`** for **`~/.agents/skills/`**.
+
+**Legacy / still supported:** `~/.config/coala/skills/` — chat’s `/skill` resolves skills in this order: local `.agents/skills`, then `~/.config/coala/skills`, then `~/.agents/skills`.
+
+**`coala init`** creates `~/.config/coala/mcps/mcp_servers.json` and `~/.config/coala/env` (global defaults for keys and MCP env).
+
+If you import MCP toolsets **without** `--global`, set **`MCP_CONFIG_FILE`** to your project file (e.g. `$PWD/.agents/mcps/mcp_servers.json`) so chat uses the same config, or merge entries into the default global file.
 
 ## Quick start
 
@@ -27,25 +38,27 @@ Part of the coala ecosystem. CLI for chat with OpenAI-compatible LLMs (OpenAI, G
 
 3. **Chat**  
    `coala` or `coala chat` — interactive chat with MCP tools.  
-   `coala ask "question"` — single prompt with MCP.
+   `coala ask "question"` or `coala -c "question"` / `coala --command "question"` — single prompt with MCP.
 
 4. **Options**  
-   `-p, --provider` (openai|gemini|ollama|custom), `-m, --model`, `--no-mcp`.
+   `-p, --provider` (openai|gemini|ollama|custom), `-m, --model`, `--no-mcp`, **`--sandbox`** (enables a `run_command` tool for basic shell commands from the LLM).
 
 ## MCP: CWL toolsets
 
 No API key needed for MCP import, list, or call — only for chat/ask with an LLM.
 
-- **Import** (creates toolset under `~/.config/coala/mcps/<TOOLSET>/` and registers server):  
+- **Import** (registers server and writes toolset files):  
   - **From coala-repo** (only the tool folder is downloaded, no full repo):  
     `coala mcp <TOOLSET>` e.g. `coala mcp bwa` (imports from coala-repo `data/<TOOLSET>/`).  
+    For a **private** coala-repo, set **`COALA_REPO_TOKEN`** or **`GITHUB_TOKEN`**.  
   - **From your own sources:**  
     `coala mcp <TOOLSET> <SOURCES...>` or `coala mcp-import <TOOLSET> <SOURCES...>`  
     SOURCES: local `.cwl` files, a `.zip`, or http(s) URLs to a .cwl or .zip.  
-  Requires the `coala` package where the MCP server runs (for `run_mcp.py`).
+  **Default install location:** project `.agents/mcps/`; add **`--global`** for `~/.agents/mcps/`.  
+  Requires the **`coala`** package where the MCP server runs (for `run_mcp.py`).
 
 - **List**  
-  `coala mcp-list` — list server names.  
+  `coala mcp-list` — list server names (from the MCP config file chat uses).  
   `coala mcp-list <SERVER_NAME>` — print each tool’s schema (name, description, inputSchema).
 
 - **Call**  
@@ -54,14 +67,17 @@ No API key needed for MCP import, list, or call — only for chat/ask with an LL
 
 ## Skills
 
-- **Import** (into `~/.config/coala/skills/`, one subfolder per source):  
+- **Import:**  
   - **From coala-repo** (only the skills folder is downloaded):  
-    `coala skill <TOOLSET>` e.g. `coala skill bwa` (imports from coala-repo `data/<TOOLSET>/skills/`).  
+    `coala skill <TOOLSET>` e.g. `coala skill bwa` (from coala-repo `data/<TOOLSET>/skills/`).  
   - **From URL or path:**  
     `coala skill <SOURCES...>` — GitHub tree URL, zip URL, or local zip/dir.  
+  **Default:** `<cwd>/.agents/skills/`; **`--global`** → `~/.agents/skills/`.  
+  Private repo: **`COALA_REPO_TOKEN`** or **`GITHUB_TOKEN`**.
+
 - **In chat**  
-  `/skill` — list installed skills.  
-  `/skill <name>` — load skill from `~/.config/coala/skills/<name>/` (e.g. SKILL.md) into context.
+  `/skill` — list installed skills (union of local, `~/.config/coala/skills`, `~/.agents/skills`).  
+  `/skill <name>` — load skill from `<name>/` (prefers `SKILL.md`, else first `.md` in the folder).
 
 ## Search tools
 
@@ -81,10 +97,12 @@ No API key needed for MCP import, list, or call — only for chat/ask with an LL
 ## MCP on/off
 
 - **All off:** `coala --no-mcp` (or `coala ask "..." --no-mcp`).  
-- **One server off:** remove its entry from `~/.config/coala/mcps/mcp_servers.json`.  
-- **On:** default when `--no-mcp` is not used; add or restore servers in `mcp_servers.json`.
+- **Per file:** edit or split the JSON referenced by **`MCP_CONFIG_FILE`** (default `~/.config/coala/mcps/mcp_servers.json`).  
+- **On:** default when `--no-mcp` is not used; servers are loaded from that config.
 
 ## Providers and env
 
-Set provider via `-p` or env `PROVIDER`. Set keys and URLs per provider (e.g. `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_BASE_URL`). Optional: put vars in `~/.config/coala/env`.  
+Set provider via `-p` or env **`PROVIDER`**. Set keys and URLs per provider (e.g. `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_BASE_URL`). Optional: put vars in `~/.config/coala/env`.  
+**`MCP_CONFIG_FILE`** — path to `mcp_servers.json` for chat and `mcp-list` / `mcp-call`.  
+
 `coala config` — print current config paths and provider/model info.
