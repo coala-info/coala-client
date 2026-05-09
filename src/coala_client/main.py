@@ -226,7 +226,19 @@ def _mcp_config_local() -> str:
     is_flag=True,
     help="Install to ~/.agents/mcps/ instead of current directory .agents/mcps/.",
 )
-def mcp_import(toolset: str, sources: tuple[str, ...], global_: bool) -> None:
+@click.option(
+    "--container-runner",
+    type=str,
+    default=None,
+    help="Container runtime for CWL tools (e.g. docker, podman, singularity, udocker). "
+    "Default: coala's default (typically docker).",
+)
+def mcp_import(
+    toolset: str,
+    sources: tuple[str, ...],
+    global_: bool,
+    container_runner: str | None,
+) -> None:
     """Import CWL as an MCP server from coala-repo or from SOURCES.
 
     With no SOURCES: imports from coala-repo GitHub (data/TOOLSET), e.g. `coala mcp bwa`.
@@ -251,12 +263,14 @@ def mcp_import(toolset: str, sources: tuple[str, ...], global_: bool) -> None:
             entry = import_cwl_toolset_from_coala_repo(
                 toolset,
                 mcp_config_file=mcp_config_file,
+                container_runner=container_runner,
             )
         else:
             entry = import_cwl_toolset(
                 toolset,
                 list(sources),
                 mcp_config_file=mcp_config_file,
+                container_runner=container_runner,
             )
     except (FileNotFoundError, ValueError, OSError) as e:
         click.echo(str(e), err=True)
@@ -285,10 +299,28 @@ def mcp_import(toolset: str, sources: tuple[str, ...], global_: bool) -> None:
     is_flag=True,
     help="Install to ~/.agents/mcps/ instead of current directory .agents/mcps/.",
 )
-def mcp(toolset: str, sources: tuple[str, ...], global_: bool) -> None:
+@click.option(
+    "--container-runner",
+    type=str,
+    default=None,
+    help="Container runtime for CWL tools (e.g. docker, podman, singularity, udocker). "
+    "Default: coala's default (typically docker).",
+)
+def mcp(
+    toolset: str,
+    sources: tuple[str, ...],
+    global_: bool,
+    container_runner: str | None,
+) -> None:
     """Alias for mcp-import. Import from coala-repo (e.g. coala mcp bwa) or from SOURCES."""
     ctx = click.get_current_context()
-    ctx.invoke(mcp_import, toolset=toolset, sources=sources, global_=global_)
+    ctx.invoke(
+        mcp_import,
+        toolset=toolset,
+        sources=sources,
+        global_=global_,
+        container_runner=container_runner,
+    )
 
 
 @cli.command(name="mcp-list")

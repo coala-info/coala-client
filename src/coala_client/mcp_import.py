@@ -179,7 +179,12 @@ def _cwl_declares_stdout(cwl_path: Path) -> bool:
     return False
 
 
-def _generate_mcp_py(toolset_dir: Path, cwl_paths: list[Path]) -> str:
+def _generate_mcp_py(
+    toolset_dir: Path,
+    cwl_paths: list[Path],
+    *,
+    container_runner: str | None = None,
+) -> str:
     """Generate run_mcp.py script content that loads all CWL tools and serves via stdio."""
     # Use paths relative to toolset_dir so nested dirs (e.g. from zip) work
     add_lines = []
@@ -191,11 +196,15 @@ def _generate_mcp_py(toolset_dir: Path, cwl_paths: list[Path]) -> str:
         else:
             add_lines.append(f"mcp.add_tool({path_arg})")
     add_lines = "\n".join(add_lines)
+    if container_runner:
+        ctor = f"mcp_api(container_runner={container_runner!r})"
+    else:
+        ctor = "mcp_api()"
     return f'''from coala.mcp_api import mcp_api
 import os
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
-mcp = mcp_api()
+mcp = {ctor}
 {add_lines}
 mcp.serve()
 '''
@@ -218,6 +227,7 @@ def import_cwl_toolset(
     sources: list[str | Path],
     *,
     mcp_config_file: str = "~/.config/coala/mcps/mcp_servers.json",
+    container_runner: str | None = None,
 ) -> dict[str, Any]:
     """Import CWL files or a zip of CWL files into a named toolset and register as MCP server.
 
@@ -265,7 +275,13 @@ def import_cwl_toolset(
             "No .cwl files found. Provide .cwl files or a .zip containing .cwl files."
         )
 
-    return _register_toolset(toolset_dir, cwl_paths, toolset, mcp_config_file)
+    return _register_toolset(
+        toolset_dir,
+        cwl_paths,
+        toolset,
+        mcp_config_file,
+        container_runner=container_runner,
+    )
 
 
 def _register_toolset(
@@ -273,11 +289,15 @@ def _register_toolset(
     cwl_paths: list[Path],
     toolset: str,
     mcp_config_file: str,
+    *,
+    container_runner: str | None = None,
 ) -> dict[str, Any]:
     """Write run_mcp.py and add toolset to mcp_servers.json. Returns the server entry."""
     # Use run_mcp.py to avoid shadowing the 'mcp' package (from mcp.server.fastmcp)
     mcp_py_path = toolset_dir / "run_mcp.py"
-    mcp_py_path.write_text(_generate_mcp_py(toolset_dir, cwl_paths))
+    mcp_py_path.write_text(
+        _generate_mcp_py(toolset_dir, cwl_paths, container_runner=container_runner)
+    )
 
     config_path = Path(mcp_config_file).expanduser()
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +319,7 @@ def import_cwl_toolset_from_coala_repo(
     toolset: str,
     *,
     mcp_config_file: str = "~/.config/coala/mcps/mcp_servers.json",
+    container_runner: str | None = None,
 ) -> dict[str, Any]:
     """Import CWL files from coala-repo GitHub (data/<toolset>) and register as MCP server.
 
@@ -314,4 +335,10 @@ def import_cwl_toolset_from_coala_repo(
     if toolset_dir.exists():
         shutil.rmtree(toolset_dir)
     cwl_paths = _download_coala_repo_folder_to(toolset, toolset_dir)
-    return _register_toolset(toolset_dir, cwl_paths, toolset, mcp_config_file)
+    return _register_toolset(
+        toolset_dir,
+        cwl_paths,
+        toolset,
+        mcp_config_file,
+        container_runner=container_runner,
+    )
