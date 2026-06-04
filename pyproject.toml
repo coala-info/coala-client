@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coala-client"
-version = "0.1.0"
+version = "0.1.2"
 description = "A simple command line interface for LLM with MCP server and OpenAI-compatible API support"
 authors = ["coala-info"]
 license = "MIT"
@@ -15,24 +15,23 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10"
-coala-cli = ">=0.2.0"
-openai = ">=1.68.0"
-mcp = ">=1.0.0"
+python = ">=3.12,<3.14"
+coala-cli = ">=0.2.1"
+openai = ">=2.20.0,<3.0.0"
+mcp = ">=1.12.0"
 click = ">=8.1.0"
 rich = ">=13.0.0"
-pydantic = ">=2.0.0"
-pydantic-settings = ">=2.0.0"
-httpx = ">=0.27.0"
-anyio = ">=4.0.0"
-pyyaml = ">=6.0.1"
+pydantic = ">=2.10.0"
+pydantic-settings = ">=2.6.0"
+httpx = ">=0.28.1"
+anyio = ">=4.8.0"
+pyyaml = ">=6.0.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
