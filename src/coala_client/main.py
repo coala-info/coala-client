@@ -16,7 +16,7 @@ from .skill_import import (
     import_skills,
     import_skills_from_coala_repo,
 )
-from .tools_index import get_tools_index, search_tools
+from .tools_index import get_tools_index, list_categories, search_tools
 
 
 async def _mcp_list_servers() -> None:
@@ -416,7 +416,17 @@ def skill(sources: tuple[str, ...], global_: bool) -> None:
     is_flag=True,
     help="Ignore cache and re-fetch the tools index",
 )
-def search(query: str, refresh: bool) -> None:
+@click.option(
+    "--limit",
+    default=10,
+    show_default=True,
+    help="Maximum number of tools to show",
+)
+@click.option(
+    "--category",
+    help="Filter by tool category (e.g. CLI, bioconductor, galaxy)",
+)
+def search(query: str, refresh: bool, limit: int, category: str | None) -> None:
     """Search for tools in the coala repo.
 
     Uses the package index from coala-mp (cached after first run). QUERY is matched
@@ -427,15 +437,26 @@ def search(query: str, refresh: bool) -> None:
     except OSError as e:
         click.echo(f"Failed to load tools index: {e}", err=True)
         raise SystemExit(1) from e
-    matches = search_tools(index, query)
+    if category:
+        valid = {c.lower() for c in list_categories(index)}
+        if category.strip().lower() not in valid:
+            cats = ", ".join(list_categories(index))
+            click.echo(f"Unknown category {category!r}. Available: {cats}", err=True)
+            raise SystemExit(1)
+    matches = search_tools(index, query, category=category)
     if not matches:
         click.echo("No tools found.")
         return
-    for t in matches:
+    total = len(matches)
+    for t in matches[:limit]:
         name = t.get("name") or t.get("id") or t.get("toolset") or "(no name)"
         desc = t.get("description") or t.get("desc") or ""
+        cat = (t.get("category") or "").strip()
+        prefix = f"[{cat}] " if cat else ""
         line = name if not desc else f"{name}: {desc[:80]}{'...' if len(desc) > 80 else ''}"
-        click.echo(line)
+        click.echo(f"{prefix}{line}")
+    if total > limit:
+        click.echo(f"\nShowing {limit} of {total} matches. Use --limit to see more.")
 
 
 @cli.command()

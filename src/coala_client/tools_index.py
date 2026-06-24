@@ -112,8 +112,28 @@ def _search_rank(tool: dict, query: str) -> tuple[int, str]:
     return (3, name)  # match in description/other only
 
 
-def search_tools(index: list[dict], query: str) -> list[dict]:
+def _tool_category(t: dict) -> str:
+    return (t.get("category") or "").strip()
+
+
+def list_categories(index: list[dict]) -> list[str]:
+    return sorted({c for t in index if isinstance(t, dict) for c in [_tool_category(t)] if c})
+
+
+def search_tools(
+    index: list[dict],
+    query: str,
+    *,
+    category: str | None = None,
+) -> list[dict]:
     """Return tools matching query (case-insensitive), ordered: exact name first, then name start, then name contains, then description."""
+    if category:
+        cat = category.strip().lower()
+        index = [
+            t for t in index
+            if isinstance(t, dict) and _tool_category(t).lower() == cat
+        ]
+
     q = query.strip().lower()
     if not q:
         return list(index)
