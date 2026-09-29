@@ -285,7 +285,7 @@ pytest
 
 ## Publishing to PyPI
 
-The repo includes a GitHub Action (`.github/workflows/release.yml`) that builds with Poetry and publishes to PyPI when a release is published.
+The repo includes a GitHub Action (`.github/workflows/release.yml`) that builds with uv (`uv build`) and publishes to PyPI when a release is published.
 
 1. **Create a GitHub environment** named `pypi` (optional but recommended).
 2. **Configure PyPI** using one of:

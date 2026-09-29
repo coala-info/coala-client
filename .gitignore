@@ -89,6 +89,9 @@ Pipfile.lock
 # poetry
 poetry.lock
 
+# uv (a library: the lock stays local, as poetry.lock did)
+uv.lock
+
 # pdm
 .pdm.toml
 

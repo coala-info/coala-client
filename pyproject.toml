@@ -1,14 +1,11 @@
-[tool.poetry]
+[project]
 name = "coala-client"
 version = "0.1.4"
 description = "A simple command line interface for LLM with MCP server and OpenAI-compatible API support"
-authors = ["coala-info"]
+authors = [{ name = "coala-info" }]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "coala_client", from = "src" }]
-homepage = "https://github.com/coala-info/coala_client"
-repository = "https://github.com/coala-info/coala_client"
-documentation = "https://github.com/coala-info/coala_client#readme"
+requires-python = ">=3.12,<3.15"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -20,27 +17,37 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
 ]
+dependencies = [
+    "coala-cli>=0.2.1",
+    "openai>=2.20.0,<3.0.0",
+    "mcp>=1.12.0,<2",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.28.1",
+    "anyio>=4.8.0",
+    "pyyaml>=6.0.2",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<3.15"
-coala-cli = ">=0.2.1"
-openai = ">=2.20.0,<3.0.0"
-mcp = ">=1.12.0,<2"
-click = ">=8.1.0"
-rich = ">=13.0.0"
-pydantic = ">=2.10.0"
-pydantic-settings = ">=2.6.0"
-httpx = ">=0.28.1"
-anyio = ">=4.8.0"
-pyyaml = ">=6.0.2"
+[project.urls]
+Homepage = "https://github.com/coala-info/coala_client"
+Repository = "https://github.com/coala-info/coala_client"
+Documentation = "https://github.com/coala-info/coala_client#readme"
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8.0.0"
-pytest-asyncio = ">=0.24.0"
-
-[tool.poetry.scripts]
+[project.scripts]
 coala = "coala_client.main:cli"
 
+[dependency-groups]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
+
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The sdist carries the package, the README and the licence, as the Poetry build did.
+[tool.hatch.build.targets.sdist]
+include = ["src/coala_client", "README.md", "LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coala_client"]
