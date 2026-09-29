@@ -17,14 +17,15 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.12,<3.14"
+python = ">=3.12,<3.15"
 coala-cli = ">=0.2.1"
 openai = ">=2.20.0,<3.0.0"
-mcp = ">=1.12.0"
+mcp = ">=1.12.0,<2"
 click = ">=8.1.0"
 rich = ">=13.0.0"
 pydantic = ">=2.10.0"
