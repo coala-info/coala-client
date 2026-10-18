@@ -238,9 +238,23 @@ coala search bwa
 
 # Re-fetch the index (ignore cache)
 coala search bwa --refresh
+
+# Filter by category or by category group
+coala search bwa --category "Python library"
+coala search bwa --category Workflows
 ```
 
 The index is cached at `~/.config/coala/cache/tools-index.json`.
+
+`--category` takes a category or a category group. Matching ignores case.
+
+| Group | Categories |
+| --- | --- |
+| `Command-line tools` | `Command-line tool` |
+| `Libraries` | `Python library`, `R package`, `Bioconductor package`, `Perl module`, `Other library` |
+| `Workflows` | `Galaxy workflow`, `Nextflow workflow`, `CWL workflow` |
+
+The old short names still work: `cli`, `python`, `r`, `bioconductor`, `perl`, `galaxy`, `nextflow`, `cwl`, and `library` (the whole `Libraries` group).
 
 ## Examples
 

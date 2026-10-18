@@ -116,8 +116,54 @@ def _tool_category(t: dict) -> str:
     return (t.get("category") or "").strip()
 
 
+def _tool_category_group(t: dict) -> str:
+    return (t.get("category_group") or "").strip()
+
+
+# Short labels used by older versions of the index, mapped to the current
+# category (or category group) names. Keys are lowercase.
+CATEGORY_ALIASES = {
+    "cli": "Command-line tool",
+    "python": "Python library",
+    "r": "R package",
+    "bioconductor": "Bioconductor package",
+    "perl": "Perl module",
+    "library": "Libraries",
+    "galaxy": "Galaxy workflow",
+    "nextflow": "Nextflow workflow",
+    "cwl": "CWL workflow",
+}
+
+
 def list_categories(index: list[dict]) -> list[str]:
     return sorted({c for t in index if isinstance(t, dict) for c in [_tool_category(t)] if c})
+
+
+def list_category_groups(index: list[dict]) -> list[str]:
+    return sorted({g for t in index if isinstance(t, dict) for g in [_tool_category_group(t)] if g})
+
+
+def resolve_category(index: list[dict], category: str) -> set[str]:
+    """Return the lowercase category names that CATEGORY selects in INDEX.
+
+    CATEGORY may be a category name ("Python library"), a group name
+    ("Libraries"), or an old short label ("python", "library"). Matching is
+    case-insensitive. Returns an empty set if nothing matches.
+    """
+    key = category.strip().lower()
+    names = {c.lower() for c in list_categories(index)}
+    if key in names:
+        return {key}
+    by_group = {
+        _tool_category(t).lower()
+        for t in index
+        if isinstance(t, dict) and _tool_category_group(t).lower() == key and _tool_category(t)
+    }
+    if by_group:
+        return by_group
+    if key in CATEGORY_ALIASES:
+        return resolve_category(index, CATEGORY_ALIASES[key])
+    return set()
 
 
 def search_tools(
@@ -128,10 +174,10 @@ def search_tools(
 ) -> list[dict]:
     """Return tools matching query (case-insensitive), ordered: exact name first, then name start, then name contains, then description."""
     if category:
-        cat = category.strip().lower()
+        cats = resolve_category(index, category)
         index = [
             t for t in index
-            if isinstance(t, dict) and _tool_category(t).lower() == cat
+            if isinstance(t, dict) and _tool_category(t).lower() in cats
         ]
 
     q = query.strip().lower()
