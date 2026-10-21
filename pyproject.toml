@@ -1,6 +1,6 @@
 [project]
 name = "coala-client"
-version = "0.1.4"
+version = "0.1.5"
 description = "A simple command line interface for LLM with MCP server and OpenAI-compatible API support"
 authors = [{ name = "coala-info" }]
 license = "MIT"
