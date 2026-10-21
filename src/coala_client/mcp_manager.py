@@ -51,7 +51,7 @@ class MCPServerConnection:
             if hasattr(content, "text"):
                 contents.append(content.text)
             elif hasattr(content, "data"):
-                contents.append(f"[Binary data: {content.mimeType}]")
+                contents.append(f"[Binary data: {content.mime_type}]")
             else:
                 contents.append(str(content))
 
@@ -178,7 +178,7 @@ class MCPManager:
                 "function": {
                     "name": tool.name,
                     "description": tool.description or "",
-                    "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+                    "parameters": tool.input_schema or {"type": "object", "properties": {}},
                 },
             }
             openai_tools.append(openai_tool)

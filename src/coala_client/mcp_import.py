@@ -293,7 +293,7 @@ def _register_toolset(
     container_runner: str | None = None,
 ) -> dict[str, Any]:
     """Write run_mcp.py and add toolset to mcp_servers.json. Returns the server entry."""
-    # Use run_mcp.py to avoid shadowing the 'mcp' package (from mcp.server.fastmcp)
+    # Use run_mcp.py to avoid shadowing the 'mcp' package (mcp.server.mcpserver)
     mcp_py_path = toolset_dir / "run_mcp.py"
     mcp_py_path.write_text(
         _generate_mcp_py(toolset_dir, cwl_paths, container_runner=container_runner)

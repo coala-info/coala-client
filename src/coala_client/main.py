@@ -48,7 +48,7 @@ async def _mcp_list_tools(server_name: str) -> None:
             schema = {
                 "name": tool.name,
                 "description": tool.description or "",
-                "inputSchema": tool.inputSchema or {},
+                "inputSchema": tool.input_schema or {},
             }
             click.echo(json.dumps(schema, indent=2))
             click.echo("---")
