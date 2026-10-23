@@ -16,7 +16,13 @@ from .skill_import import (
     import_skills,
     import_skills_from_coala_repo,
 )
-from .tools_index import get_tools_index, list_categories, search_tools
+from .tools_index import (
+    get_tools_index,
+    list_categories,
+    list_category_groups,
+    resolve_category,
+    search_tools,
+)
 
 
 async def _mcp_list_servers() -> None:
@@ -424,7 +430,11 @@ def skill(sources: tuple[str, ...], global_: bool) -> None:
 )
 @click.option(
     "--category",
-    help="Filter by tool category (e.g. CLI, bioconductor, galaxy)",
+    help=(
+        'Filter by category (e.g. "Python library", "Galaxy workflow") or group '
+        '("Command-line tools", "Libraries", "Workflows"). Old short names such as '
+        "cli, python, r, galaxy, and library also work."
+    ),
 )
 def search(query: str, refresh: bool, limit: int, category: str | None) -> None:
     """Search for tools in the coala repo.
@@ -437,12 +447,13 @@ def search(query: str, refresh: bool, limit: int, category: str | None) -> None:
     except OSError as e:
         click.echo(f"Failed to load tools index: {e}", err=True)
         raise SystemExit(1) from e
-    if category:
-        valid = {c.lower() for c in list_categories(index)}
-        if category.strip().lower() not in valid:
-            cats = ", ".join(list_categories(index))
-            click.echo(f"Unknown category {category!r}. Available: {cats}", err=True)
-            raise SystemExit(1)
+    if category and not resolve_category(index, category):
+        msg = f"Unknown category {category!r}. Available: {', '.join(list_categories(index))}"
+        groups = list_category_groups(index)
+        if groups:
+            msg += f". Groups: {', '.join(groups)}"
+        click.echo(f"{msg}. Use --refresh if the cached index is out of date.", err=True)
+        raise SystemExit(1)
     matches = search_tools(index, query, category=category)
     if not matches:
         click.echo("No tools found.")

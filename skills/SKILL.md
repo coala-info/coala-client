@@ -83,7 +83,8 @@ No API key needed for MCP import, list, or call — only for chat/ask with an LL
 
 - **Search** the coala tools index (from coala-mp; cached at `~/.config/coala/cache/tools-index.json`):  
   `coala search <QUERY>` — e.g. `coala search bwa`. Exact name matches appear first.  
-  `coala search <QUERY> --refresh` — re-fetch the index.
+  `coala search <QUERY> --refresh` — re-fetch the index.  
+  `coala search <QUERY> --category "Python library"` — filter by category (`Command-line tool`, `Python library`, `R package`, `Bioconductor package`, `Perl module`, `Other library`, `Galaxy workflow`, `Nextflow workflow`, `CWL workflow`) or group (`Command-line tools`, `Libraries`, `Workflows`).
 
 ## Chat commands
 
