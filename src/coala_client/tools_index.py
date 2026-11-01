@@ -82,10 +82,34 @@ def _tool_name(t: dict) -> str:
     return (t.get("name") or t.get("id") or t.get("toolset") or "").strip().lower()
 
 
+# A command name shared by more than this many packages (``merge``, ``index``, ``filter``,
+# ``view``) names an action, not a tool: its matches rank after description matches.
+GENERIC_COMMAND_PACKAGES = 10
+
+
+def _tool_commands(t: dict) -> dict[str, str]:
+    """``{lowercase: as written}`` for the subcommands the index lists for a package."""
+    cmds = t.get("commands")
+    if not isinstance(cmds, list):
+        return {}
+    return {c.strip().lower(): c.strip() for c in cmds if isinstance(c, str) and c.strip()}
+
+
+def matched_command(t: dict, query: str) -> str | None:
+    """The package's subcommand that is exactly ``query`` (case-insensitive), as written."""
+    return _tool_commands(t).get(query.strip().lower())
+
+
 def _tool_text(t: dict) -> str:
-    """All searchable string content (for matching), lowercased."""
+    """All searchable string content (for matching), lowercased.
+
+    Subcommand names are left out: they match whole, never as substrings, so ``count`` does
+    not find every package with a ``featureCounts`` command.
+    """
     parts = []
     for k, v in t.items():
+        if k == "commands":
+            continue
         if isinstance(v, str):
             parts.append(v)
         elif isinstance(v, dict):
@@ -99,17 +123,26 @@ def _tool_text(t: dict) -> str:
     return " ".join(parts).lower()
 
 
-def _search_rank(tool: dict, query: str) -> tuple[int, str]:
-    """Return (priority, sort_key). Lower priority = better match. Exact name first."""
+def _search_rank(tool: dict, query: str, *, generic_command: bool = False) -> tuple[int, str]:
+    """Return (priority, sort_key). Lower priority = better match.
+
+    Exact package name, then a package with a subcommand of exactly that name
+    (``featurecounts`` -> ``subread``), then name prefix, name substring, description, and
+    last a subcommand name shared by many packages.
+    """
     name = _tool_name(tool)
     q = query.strip().lower()
     if name == q:
         return (0, name)
-    if name.startswith(q):
+    if not generic_command and q in _tool_commands(tool):
         return (1, name)
-    if q in name:
+    if name.startswith(q):
         return (2, name)
-    return (3, name)  # match in description/other only
+    if q in name:
+        return (3, name)
+    if q in _tool_text(tool):
+        return (4, name)  # match in description/other only
+    return (5, name)  # only a common subcommand name
 
 
 def _tool_category(t: dict) -> str:
@@ -172,7 +205,14 @@ def search_tools(
     *,
     category: str | None = None,
 ) -> list[dict]:
-    """Return tools matching query (case-insensitive), ordered: exact name first, then name start, then name contains, then description."""
+    """Return tools matching query (case-insensitive).
+
+    Ordered: exact name, exact subcommand name, name start, name contains, description, then a
+    subcommand name shared by more than ``GENERIC_COMMAND_PACKAGES`` packages.
+    """
+    q = query.strip().lower()
+    shared = sum(1 for t in index if isinstance(t, dict) and q and q in _tool_commands(t))
+    generic_command = shared > GENERIC_COMMAND_PACKAGES
     if category:
         cats = resolve_category(index, category)
         index = [
@@ -180,9 +220,11 @@ def search_tools(
             if isinstance(t, dict) and _tool_category(t).lower() in cats
         ]
 
-    q = query.strip().lower()
     if not q:
         return list(index)
 
-    matched = [t for t in index if isinstance(t, dict) and q in _tool_text(t)]
-    return sorted(matched, key=lambda t: _search_rank(t, q))
+    matched = [
+        t for t in index
+        if isinstance(t, dict) and (q in _tool_text(t) or q in _tool_commands(t))
+    ]
+    return sorted(matched, key=lambda t: _search_rank(t, q, generic_command=generic_command))

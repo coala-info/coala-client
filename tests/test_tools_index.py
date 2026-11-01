@@ -81,3 +81,41 @@ def test_cli_search_unknown_category(monkeypatch):
     assert result.exit_code == 1
     assert "Unknown category 'nope'" in result.output
     assert "Groups: Command-line tools, Libraries, Workflows" in result.output
+
+
+# Subcommands: `coala search featurecounts` listed workflows that mention featureCounts and
+# never `subread`, the package that has it, because the index held only package-level text.
+SUITES = [
+    {"name": "subread", "description": "High-performance read mapping and quantification.",
+     "commands": ["featureCounts", "subjunc", "subread-align"]},
+    {"name": "rna-seq-counts", "description": "A workflow that runs featureCounts on BAM files."},
+    {"name": "featurecounts-wrapper", "description": "Wraps a counting tool."},
+    {"name": "htseq", "description": "Count reads in features.", "commands": ["count"]},
+] + [
+    {"name": f"suite{i}", "description": "A toolkit.", "commands": ["merge", "index"]}
+    for i in range(12)
+] + [{"name": "mergetool", "description": "Merges things; see merge."}]
+
+
+def test_an_exact_subcommand_finds_its_package_right_after_an_exact_name():
+    found = [t["name"] for t in search_tools(SUITES, "FeatureCounts")]
+    assert found[:3] == ["subread", "featurecounts-wrapper", "rna-seq-counts"]
+
+
+def test_subcommands_match_whole_never_as_substrings():
+    assert "subread" not in {t["name"] for t in search_tools(SUITES, "count")}
+    assert "htseq" in {t["name"] for t in search_tools(SUITES, "count")}
+    assert search_tools(SUITES, "subj") == []
+
+
+def test_a_subcommand_many_packages_share_ranks_after_description_matches():
+    found = [t["name"] for t in search_tools(SUITES, "merge")]
+    assert found[0] == "mergetool"
+    assert len(found) == 13 and set(found[1:]) == {f"suite{i}" for i in range(12)}
+
+
+def test_the_cli_names_the_matched_subcommand(monkeypatch):
+    monkeypatch.setattr(main, "get_tools_index", lambda force_refresh=False: SUITES)
+    out = CliRunner().invoke(main.cli, ["search", "featurecounts"]).output
+    assert out.splitlines()[0].startswith("subread: ")
+    assert "[command: featureCounts]" in out.splitlines()[0]

@@ -20,6 +20,7 @@ from .tools_index import (
     get_tools_index,
     list_categories,
     list_category_groups,
+    matched_command,
     resolve_category,
     search_tools,
 )
@@ -440,7 +441,8 @@ def search(query: str, refresh: bool, limit: int, category: str | None) -> None:
     """Search for tools in the coala repo.
 
     Uses the package index from coala-mp (cached after first run). QUERY is matched
-    against tool name, id, description, etc.
+    against tool name, id, description, etc., and whole against each package's
+    subcommands (``featurecounts`` finds ``subread``).
     """
     try:
         index = get_tools_index(force_refresh=refresh)
@@ -465,6 +467,9 @@ def search(query: str, refresh: bool, limit: int, category: str | None) -> None:
         cat = (t.get("category") or "").strip()
         prefix = f"[{cat}] " if cat else ""
         line = name if not desc else f"{name}: {desc[:80]}{'...' if len(desc) > 80 else ''}"
+        command = matched_command(t, query)
+        if command:
+            line += f" [command: {command}]"
         click.echo(f"{prefix}{line}")
     if total > limit:
         click.echo(f"\nShowing {limit} of {total} matches. Use --limit to see more.")
