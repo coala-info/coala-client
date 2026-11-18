@@ -1,6 +1,9 @@
 """Fetch and cache coala tools index; search tools."""
 
 import json
+import math
+import re
+from collections import Counter
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -205,6 +208,62 @@ def resolve_category(index: list[dict], category: str) -> set[str]:
     return set()
 
 
+_WORD = re.compile(r"[a-z0-9]+")
+# A word in more than this share of names and descriptions ("and", "data", "analysis") still
+# counts toward a tool's score but does not by itself make a tool a match.
+_COMMON_WORD_SHARE = 0.05
+_BM25_K1 = 1.2
+_BM25_B = 0.75
+
+
+def _words(text: str) -> list[str]:
+    return _WORD.findall((text or "").lower())
+
+
+def _summary_words(t: dict) -> list[str]:
+    """The words of a tool's name and description, the text its one-line summary shows."""
+    name = re.sub(r"[-_.]", " ", _tool_name(t))
+    return _words(f"{name} {t.get('description') or ''}")
+
+
+class _WordStats:
+    """Word counts over every tool's name and description, for BM25 scoring."""
+
+    def __init__(self, index: list[dict]) -> None:
+        self.docs = {id(t): Counter(_summary_words(t)) for t in index if isinstance(t, dict)}
+        self.lengths = {k: sum(c.values()) for k, c in self.docs.items()}
+        self.n = max(1, len(self.docs))
+        self.avg = max(1.0, sum(self.lengths.values()) / self.n)
+        self.df: Counter = Counter()
+        for c in self.docs.values():
+            self.df.update(c.keys())
+
+    def idf(self, w: str) -> float:
+        df = self.df.get(w, 0)
+        return math.log(1 + (self.n - df + 0.5) / (df + 0.5))
+
+    def common(self, w: str) -> bool:
+        return self.df.get(w, 0) > _COMMON_WORD_SHARE * self.n
+
+    def score(self, t: dict, words: list[str]) -> float:
+        tf = self.docs.get(id(t))
+        if not tf:
+            return 0.0
+        norm = _BM25_K1 * (1 - _BM25_B + _BM25_B * self.lengths[id(t)] / self.avg)
+        return sum(self.idf(w) * f * (_BM25_K1 + 1) / (f + norm)
+                   for w in words if (f := tf.get(w, 0)))
+
+
+_STATS: tuple[int, int, _WordStats] | None = None
+
+
+def _word_stats(index: list[dict]) -> _WordStats:
+    global _STATS
+    if _STATS is None or _STATS[0] != id(index) or _STATS[1] != len(index):
+        _STATS = (id(index), len(index), _WordStats(index))
+    return _STATS[2]
+
+
 def search_tools(
     index: list[dict],
     query: str,
@@ -213,10 +272,18 @@ def search_tools(
 ) -> list[dict]:
     """Return tools matching query (case-insensitive).
 
-    Ordered: exact name, exact subcommand name, name start, name contains, description, then a
+    Ordered: exact name, exact subcommand name, name start, name contains, then the rest by
+    how well the name and description fit, then a match in another field only, then a
     subcommand name shared by more than ``GENERIC_COMMAND_PACKAGES`` packages.
+
+    A one-word query matches as a substring and ranks description matches by how early the
+    word appears. A query of several words also matches a tool whose name or description holds
+    any of its uncommon words, and ranks those by BM25 over names and descriptions, so
+    ``ambient RNA removal`` finds a tool described as removing "ambient RNA" and a method
+    phrase finds the tool whose summary shares most of its rare words.
     """
     q = query.strip().lower()
+    full_index = index
     shared = sum(1 for t in index if isinstance(t, dict) and q and q in _tool_commands(t))
     generic_command = shared > GENERIC_COMMAND_PACKAGES
     if category:
@@ -229,8 +296,31 @@ def search_tools(
     if not q:
         return list(index)
 
-    matched = [
-        t for t in index
-        if isinstance(t, dict) and (q in _tool_text(t) or q in _tool_commands(t))
-    ]
-    return sorted(matched, key=lambda t: _search_rank(t, q, generic_command=generic_command))
+    words = list(dict.fromkeys(_words(q)))
+    if len(words) < 2:
+        matched = [
+            t for t in index
+            if isinstance(t, dict) and (q in _tool_text(t) or q in _tool_commands(t))
+        ]
+        return sorted(matched, key=lambda t: _search_rank(t, q, generic_command=generic_command))
+
+    stats = _word_stats(full_index)
+    rare = {w for w in words if not stats.common(w)}
+    ranked: list[tuple[tuple, dict]] = []
+    for t in index:
+        if not isinstance(t, dict):
+            continue
+        phrase = q in _tool_text(t) or q in _tool_commands(t)
+        if not phrase and not rare & set(_summary_words(t)):
+            continue
+        tier, at, name = _search_rank(t, q, generic_command=generic_command)
+        if tier <= 3:
+            ranked.append(((tier, 0.0, at, name), t))
+            continue
+        fit = stats.score(t, words)
+        if fit > 0:
+            ranked.append(((4, -fit, at, name), t))
+        else:
+            ranked.append(((tier + 1, 0.0, at, name), t))
+    ranked.sort(key=lambda x: x[0])
+    return [t for _, t in ranked]

@@ -135,3 +135,29 @@ DESCRIBED = [
 def test_description_matches_rank_by_how_early_the_words_appear():
     found = [t["name"] for t in search_tools(DESCRIBED, "cell type")]
     assert found == ["zzz-typer", "bbb-tool", "aaa-suite"]
+
+
+# A query of several words matched only as one phrase: ``ambient RNA removal`` missed every
+# tool described as removing "ambient RNA", and a method phrase found nothing.
+WORDY = [
+    {"name": "soupy", "description": "Estimate and remove ambient RNA contamination from droplets."},
+    {"name": "cleaner", "description": "Removal of adapters from reads."},
+    {"name": "typer", "description": "Cell phenotyping and cell type annotation of imaging data."},
+    {"name": "rnaseq", "description": "RNA-seq quantification."},
+] + [{"name": f"filler{i}", "description": "Generic data analysis utilities."} for i in range(40)]
+
+
+def test_several_words_match_a_tool_that_holds_them_apart():
+    found = [t["name"] for t in search_tools(WORDY, "ambient RNA removal")]
+    assert found[0] == "soupy"
+
+
+def test_a_method_phrase_finds_the_tool_that_shares_its_rare_words():
+    found = [t["name"] for t in search_tools(WORDY, "protein marker phenotyping and cell typing")]
+    assert found[0] == "typer"
+    assert not any(n.startswith("filler") for n in found), "common words alone never match"
+
+
+def test_an_exact_name_still_ranks_first_in_a_wordy_query():
+    found = [t["name"] for t in search_tools(WORDY + [{"name": "rna removal"}], "RNA removal")]
+    assert found[0] == "rna removal"
