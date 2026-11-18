@@ -123,26 +123,32 @@ def _tool_text(t: dict) -> str:
     return " ".join(parts).lower()
 
 
-def _search_rank(tool: dict, query: str, *, generic_command: bool = False) -> tuple[int, str]:
-    """Return (priority, sort_key). Lower priority = better match.
+def _search_rank(
+    tool: dict, query: str, *, generic_command: bool = False
+) -> tuple[int, int, str]:
+    """Return (priority, position, name). Lower sorts first.
 
     Exact package name, then a package with a subcommand of exactly that name
-    (``featurecounts`` -> ``subread``), then name prefix, name substring, description, and
-    last a subcommand name shared by many packages.
+    (``featurecounts`` -> ``subread``), then name prefix, name substring, description (the
+    earlier the query appears in it, the better), any other field, and last a subcommand
+    name shared by many packages.
     """
     name = _tool_name(tool)
     q = query.strip().lower()
     if name == q:
-        return (0, name)
+        return (0, 0, name)
     if not generic_command and q in _tool_commands(tool):
-        return (1, name)
+        return (1, 0, name)
     if name.startswith(q):
-        return (2, name)
+        return (2, 0, name)
     if q in name:
-        return (3, name)
+        return (3, 0, name)
+    at = (tool.get("description") or "").lower().find(q)
+    if at >= 0:
+        return (4, at, name)
     if q in _tool_text(tool):
-        return (4, name)  # match in description/other only
-    return (5, name)  # only a common subcommand name
+        return (5, 0, name)  # match in another field only
+    return (6, 0, name)  # only a common subcommand name
 
 
 def _tool_category(t: dict) -> str:

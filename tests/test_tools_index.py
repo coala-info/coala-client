@@ -119,3 +119,19 @@ def test_the_cli_names_the_matched_subcommand(monkeypatch):
     out = CliRunner().invoke(main.cli, ["search", "featurecounts"]).output
     assert out.splitlines()[0].startswith("subread: ")
     assert "[command: featureCounts]" in out.splitlines()[0]
+
+
+# Description matches came in name order, so a tool named late in the alphabet sank under
+# every package that mentions the words anywhere (``cell type`` put scimap 186th of 197).
+DESCRIBED = [
+    {"name": "aaa-suite", "description": "A suite of many utilities.",
+     "help": "Also handles cell type labels in passing."},
+    {"name": "bbb-tool", "description": "Reads files; among other things it can report the "
+     "cell type of each barcode."},
+    {"name": "zzz-typer", "description": "Cell type annotation of imaging data."},
+]
+
+
+def test_description_matches_rank_by_how_early_the_words_appear():
+    found = [t["name"] for t in search_tools(DESCRIBED, "cell type")]
+    assert found == ["zzz-typer", "bbb-tool", "aaa-suite"]
