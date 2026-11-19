@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 COALA_REPO = "https://github.com/coala-info/coala-repo"
@@ -100,3 +101,40 @@ def download_coala_repo_folder_to(folder_path: str, dest_dir: Path) -> None:
         dest_dir,
         token=token,
     )
+
+
+def is_rate_limited(err: HTTPError) -> bool:
+    """True when GitHub refused a request because the API rate limit is used up.
+
+    GitHub answers 429, or 403 with "rate limit" in the body; other 403s (no access) are not.
+    """
+    if err.code == 429:
+        return True
+    if err.code != 403:
+        return False
+    try:
+        body = err.read().decode("utf-8", "replace")
+    except Exception:
+        body = ""
+    return "rate limit" in body.lower() or err.headers.get("X-RateLimit-Remaining") == "0"
+
+
+def download_coala_repo_file_to(file_path: str, dest_file: Path) -> None:
+    """Download one file of coala-repo from raw.githubusercontent.com (not the rate-limited API)."""
+    url = (
+        f"https://raw.githubusercontent.com/{_COALA_REPO_OWNER}/{_COALA_REPO_NAME}/"
+        f"{COALA_REPO_BRANCH}/{file_path.strip('/')}"
+    )
+    req = Request(url, headers={"User-Agent": "coala-client"})
+    token = _get_token()
+    if token:
+        req.add_header("Authorization", f"token {token}")
+    try:
+        with urlopen(req) as resp:
+            body = resp.read()
+    except HTTPError as e:
+        if e.code == 404:
+            raise FileNotFoundError(f"'{file_path}' not found in {COALA_REPO}") from e
+        raise
+    dest_file.parent.mkdir(parents=True, exist_ok=True)
+    dest_file.write_bytes(body)

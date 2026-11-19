@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -12,8 +13,10 @@ from ._repo import (
     COALA_REPO,
     COALA_REPO_BRANCH,
     COALA_REPO_DATA_PREFIX,
+    download_coala_repo_file_to,
     download_coala_repo_folder_to,
     download_github_folder_to,
+    is_rate_limited,
     _get_token as _repo_token,
 )
 
@@ -141,7 +144,14 @@ def _download_coala_repo_skills_to(toolset: str, dest_dir: Path) -> None:
     """Download data/<toolset>/skills from coala-repo GitHub (folder only) into dest_dir."""
     folder_in_repo = f"{COALA_REPO_DATA_PREFIX}/{toolset}/skills"
     try:
-        download_coala_repo_folder_to(folder_in_repo, dest_dir)
+        try:
+            download_coala_repo_folder_to(folder_in_repo, dest_dir)
+        except HTTPError as e:
+            if not is_rate_limited(e):
+                raise
+            # The folder listing uses the GitHub API (60 calls an hour per address without a
+            # token). The skill text itself is a plain file, so fetch SKILL.md directly.
+            download_coala_repo_file_to(f"{folder_in_repo}/SKILL.md", dest_dir / "SKILL.md")
     except FileNotFoundError as e:
         raise FileNotFoundError(
             f"Folder '{folder_in_repo}' not found in {COALA_REPO}. "
